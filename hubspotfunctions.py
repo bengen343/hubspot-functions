@@ -4,8 +4,7 @@ Helper functions to extract data from HubSpot via API
 
 import json
 import time
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import requests
@@ -16,10 +15,10 @@ api_key = json.load(json_file)["hubspot-api"]
 api_client = HubSpot(api_key=api_key)
 
 # Create a function to download every contact that has either been created or submitted an application
-# since the beginning of 2021
+# after the designated time
 
 
-def get_engaged_contacts(contact_properties, _utc_time):
+def contacts_to_df(contact_properties, _utc_time=datetime(2021, 1, 1, 0, 0, 0, 0, timezone.utc)):
     """
     Return all HubSpot users who've engaged since _utc_time
     :param contact_properties: List[str] list of strings naming contact properties
@@ -32,18 +31,12 @@ def get_engaged_contacts(contact_properties, _utc_time):
     _querystring = {"hapikey": api_key}
     _df = pd.DataFrame()
 
-    # Define date ranges and convert them to UTC time
-    if _utc_time == "":
-        _utc_time = datetime.strptime(
-            "2021-01-01T00:00:00.000Z", "%Y-%m-%dT%H:%M:%S.%fZ"
-        )
-
-    _epoch_start = int((_utc_time - datetime(1970, 1, 1)).total_seconds() * 1000)
-    _current_time = timedelta(days=-1) + datetime.now().date()
-    _epoch_end = int((_current_time - datetime(1970, 1, 1)).total_seconds() * 1000)
-    _loops = int(
-        ((datetime.now().year - datetime(2021, 1, 1).year) * 12) + datetime.now().month
-    )
+    # Define all the stupid dates we'll need and convert them to seconds for HubSpot
+    _now = datetime.now(timezone.utc)
+    _current_time = datetime(_now.year, _now.month, _now.day, 0, 0, 0, 0, timezone.utc) - timedelta(days=1)
+    _epoch_start = int((_utc_time - datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc)).total_seconds() * 1000)
+    _epoch_end = int((_current_time - datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc)).total_seconds() * 1000)
+    _loops = int(((_current_time.year - _utc_time.year) * 12) + _current_time.month)
     _epoch_step = int((_epoch_end - _epoch_start) / _loops)
 
     for _loop in range(0, _loops):
@@ -52,7 +45,7 @@ def get_engaged_contacts(contact_properties, _utc_time):
         _paging_str = "0"
 
         while _paging_str != "":
-            time.sleep(0.067)
+            time.sleep(0.11)
             _payload = {
                 "filterGroups": [
                     {
@@ -98,9 +91,9 @@ def get_engaged_contacts(contact_properties, _utc_time):
             try:
                 _paging_str = _response.json().get("paging").get("next").get("after")
                 print(f"On  {int(_paging_str):,}  of  {int(_total_str):,}")
-            except Exception:
+            except Exception as e:
                 _paging_str = ""
-                print("End of list")
+                print(e)
 
         _epoch_start += _epoch_step
 
@@ -109,12 +102,13 @@ def get_engaged_contacts(contact_properties, _utc_time):
     return _df
 
 
-# Create a function to download every deal created in 2021
-def get_deals(deal_properties):
+# Create a function to download every deal created after a given date
+def deals_to_df(deal_properties, _utc_time=datetime(2021, 1, 1, 0, 0, 0, 0, timezone.utc)):
     """
-    Return the properties given by deal_properties for all HubSpot deals post-2021
+    Return the properties given by deal_properties for all HubSpot deals post-2021.
     :param deal_properties: (List[str]) A list of strings defining the deal properties to return.
-    :return: (df) A dataframe of all deals and their properties defined by deal_properties
+    :param _utc_time: (datetime) A datetime in UTC zulu time.
+    :return: (df) A dataframe of all deals and their properties defined by deal_properties.
     """
     # Define variables needed for the HubSpot API
     _url = "https://api.hubapi.com/crm/v3/objects/deals/search"
@@ -122,14 +116,12 @@ def get_deals(deal_properties):
     _querystring = {"hapikey": api_key, "includePropertyVersions": True}
     _df = pd.DataFrame()
 
-    # Define date ranges and convert them to UTC time
-    _utc_time = datetime.strptime("2021-01-01T00:00:00.000Z", "%Y-%m-%dT%H:%M:%S.%fZ")
-    _epoch_start = int((_utc_time - datetime(1970, 1, 1)).total_seconds() * 1000)
-    _current_time = timedelta(days=-1) + datetime(
-        datetime.now().year, datetime.now().month, datetime.now().day
-    )
-    _epoch_end = int((_current_time - datetime(1970, 1, 1)).total_seconds() * 1000)
-    _loops = int(datetime.now().month)
+    # Define all the stupid dates we'll need and convert them to seconds for HubSpot
+    _now = datetime.now(timezone.utc)
+    _current_time = datetime(_now.year, _now.month, _now.day, 0, 0, 0, 0, timezone.utc) - timedelta(days=1)
+    _epoch_start = int((_utc_time - datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc)).total_seconds() * 1000)
+    _epoch_end = int((_current_time - datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc)).total_seconds() * 1000)
+    _loops = int(((_current_time.year - _utc_time.year) * 12) + _current_time.month)
     _epoch_step = int((_epoch_end - _epoch_start) / _loops)
 
     for _loop in range(0, _loops):
@@ -170,9 +162,9 @@ def get_deals(deal_properties):
             try:
                 _paging_str = _response.json().get("paging").get("next").get("after")
                 print(f"On  {int(_paging_str):,}  of  {int(_total_str):,}")
-            except Exception:
+            except Exception as e:
                 _paging_str = ""
-                print("End of list")
+                print(e)
 
         _epoch_start += _epoch_step
 
